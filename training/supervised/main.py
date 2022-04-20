@@ -1,19 +1,19 @@
 import argparse
 import os
-import torch
-import numpy as np
 import torch.optim as optim
 import json
-import time
 from torchvision import datasets, transforms
+
 from oracles import DL2_Oracle
 from constraints import *
 from resnet import ResNet18
 from models import MLP, MnistNet
 from sklearn.decomposition import PCA
 import sys
+
+from mimic3 import MIMIC3
+
 sys.path.append('../../')
-import dl2lib as dl2
 import time
 
 use_cuda = torch.cuda.is_available()
@@ -205,7 +205,6 @@ if args.dataset == 'mnist':
         model = MLP(args.embed_dim, 10, 1000, 3).to(device)
     else:
         model = MnistNet().to(device)
-
 elif args.dataset == 'fashion':
     fashion_data = datasets.FashionMNIST('../../data/fashionmnist/', train=True, download=True,
                                          transform=transforms.Compose([transforms.ToTensor()]))
@@ -235,15 +234,40 @@ elif args.dataset == 'cifar10':
         transforms.ToTensor(),
     ])
 
-    cifar_data = datasets.CIFAR10('../../data/cifar10', train=True, download=True, transform=transform_train)
+    mimic_data = datasets.CIFAR10('../../data/cifar10', train=True, download=True, transform=transform_train)
 
-    train_loader = torch.utils.data.DataLoader(cifar_data, shuffle=True, batch_size=args.batch_size, **kwargs)
+    train_loader = torch.utils.data.DataLoader(mimic_data, shuffle=True, batch_size=args.batch_size, **kwargs)
     test_loader = torch.utils.data.DataLoader(
         datasets.CIFAR10('../../data/cifar10', train=False, download=True, transform=transform_test),
         batch_size=256, shuffle=True, **kwargs)
 
     if args.embed:
-        pca = embed_pca(cifar_data, args.embed_dim)
+        pca = embed_pca(mimic_data, args.embed_dim)
+        model = MLP(args.embed_dim, 10, 1000, 3).to(device)
+    else:
+        model = ResNet18().to(device)
+elif args.dataset == 'mimic3':
+    transform = transforms.Compose([transforms.ToTensor()])
+
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+    ])  # meanstd transformation
+
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+    ])
+
+    mimic_data = MIMIC3('../../data/datasets', train=True, download=True, transform=transform_train)
+
+    train_loader = torch.utils.data.DataLoader(mimic_data, shuffle=True, batch_size=args.batch_size, **kwargs)
+    test_loader = torch.utils.data.DataLoader(
+        MIMIC3('../../data/datasets', train=False, download=True, transform=transform_test),
+        batch_size=256, shuffle=True, **kwargs)
+
+    if args.embed:
+        pca = embed_pca(mimic_data, args.embed_dim)
         model = MLP(args.embed_dim, 10, 1000, 3).to(device)
     else:
         model = ResNet18().to(device)

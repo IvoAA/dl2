@@ -82,6 +82,7 @@ class LipschitzConstraint(Constraint):
     def get_condition(self, z_inp, z_out, x_batches, y_batches):
         n_batch = z_inp[0].size()[0]
         z_out = transform_network_output(z_out, self.network_output)
+
         return dl2.LEQ(torch.norm(z_out[0] - z_out[1], p=2, dim=1),
                        self.l * torch.norm((z_inp[0] - z_inp[1]).view((n_batch, -1)), p=2, dim=1))
 
@@ -212,7 +213,7 @@ class CifarDatasetConstraint(Constraint):
         self.use_cuda = use_cuda
         self.n_tvars = 1
         self.n_gvars = 0
-        self.name = 'CSimilarityT'
+        self.name = ' '
 
     def params(self):
         return {'delta': self.margin, 'network_output': self.network_output}
@@ -223,16 +224,11 @@ class CifarDatasetConstraint(Constraint):
         targets = y_batches[0]
 
         rules = []
-        rules.append(dl2.Implication(dl2.BoolConst(targets == I['car']),
-                                     dl2.GEQ(x_out[:, I['truck']], x_out[:, I['dog']] + self.margin)))
-        rules.append(dl2.Implication(dl2.BoolConst(targets == I['deer']),
-                                     dl2.GEQ(x_out[:, I['horse']], x_out[:, I['ship']] + self.margin)))
-        rules.append(dl2.Implication(dl2.BoolConst(targets == I['plane']),
-                                     dl2.GEQ(x_out[:, I['ship']], x_out[:, I['frog']] + self.margin)))
-        rules.append(dl2.Implication(dl2.BoolConst(targets == I['dog']),
-                                     dl2.GEQ(x_out[:, I['cat']], x_out[:, I['truck']] + self.margin)))
-        rules.append(dl2.Implication(dl2.BoolConst(targets == I['cat']),
-                                     dl2.GEQ(x_out[:, I['dog']], x_out[:, I['car']] + self.margin)))
+        rules.append(dl2.Implication(dl2.BoolConst(targets == I['car']), dl2.GEQ(x_out[:, I['truck']], x_out[:, I['dog']] + self.margin)))
+        rules.append(dl2.Implication(dl2.BoolConst(targets == I['deer']), dl2.GEQ(x_out[:, I['horse']], x_out[:, I['ship']] + self.margin)))
+        rules.append(dl2.Implication(dl2.BoolConst(targets == I['plane']), dl2.GEQ(x_out[:, I['ship']], x_out[:, I['frog']] + self.margin)))
+        rules.append(dl2.Implication(dl2.BoolConst(targets == I['dog']), dl2.GEQ(x_out[:, I['cat']], x_out[:, I['truck']] + self.margin)))
+        rules.append(dl2.Implication(dl2.BoolConst(targets == I['cat']), dl2.GEQ(x_out[:, I['dog']], x_out[:, I['car']] + self.margin)))
         return dl2.And(rules)
 
 
