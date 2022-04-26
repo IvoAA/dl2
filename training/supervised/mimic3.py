@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import Dataset
 import sys
 import os
@@ -30,21 +31,39 @@ class MIMIC3(Dataset):
     ) -> None:
         folder = 'train' if train else 'test'
         self.transform = transforms.Compose([transforms.ToTensor()])
-        self.reader = InHospitalMortalityReader(dataset_dir=home_dir + f"/mimic3/{folder}",
+        reader = InHospitalMortalityReader(dataset_dir=home_dir + f"/mimic3/{folder}",
                                                 listfile=home_dir + f"/mimic3/{folder}/listfile.csv",
                                                 period_length=48.0)
 
+        discretizer = Discretizer(timestep=1.0,
+                                  store_masks=True,
+                                  impute_strategy='previous',
+                                  start_time='zero')
+
+        discretizer_header = discretizer.transform(reader.read_example(0)["X"])[1].split(',')
+        cont_channels = [i for (i, x) in enumerate(discretizer_header) if x.find("->") == -1]
+
+        normalizer = Normalizer(fields=cont_channels)  # choose here which columns to standardize
+        normalizer_state = None
+        if normalizer_state is None:
+           normalizer_state = 'ihm_ts1.0.input_str_previous.start_time_zero.normalizer'
+           normalizer_state = home_dir + f"/mimic3models/in_hospital_mortality/{normalizer_state}"
+        normalizer.load_params(normalizer_state)
+
+        load_partial_data = False
+        self.data = utils.load_data(reader, discretizer, normalizer, load_partial_data)
+
+        trimmed_data = torch.tensor(self.data[0][:, 0, :]).to(torch.float32)
+
+        transformed_labels = torch.tensor(self.data[1]).to(torch.float32)
+        transformed_labels = torch.reshape(transformed_labels, (len(transformed_labels), 1))
+
+        self.data = (trimmed_data, transformed_labels)
+
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
-        item = self.reader.read_example(index)
-        data = item.get('X')
-        label = item['y']
+        data = self.data[0][index]
+        label = self.data[1][index]
         return data, label
 
     def __len__(self) -> int:
-        return self.reader.get_number_of_examples()
-
-    def __iter__(self) -> int:
-        return self.reader.read_next()
-
-    # def _next_data(self):
-    #     return self.reader.read_next()
+        return len(self.data[1])
