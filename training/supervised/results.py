@@ -7,7 +7,7 @@ from matplotlib.lines import Line2D
 from matplotlib import rcParams
 import sys
 
-datasets = ['mnist', 'fashion', 'cifar10']
+datasets = ['mnist', 'fashion', 'cifar10', 'mimic3']
 constraints = ['RobustnessT', 'RobustnessG', 'LipschitzT', 'LipschitzG', 'ClassT', 'ClassG', 'SegmentG']
 table = [[None for j in range(len(datasets)*2)] for i in range(len(constraints)*2)]
 time = [[None for j in range(len(datasets)*2)] for i in range(len(constraints))]

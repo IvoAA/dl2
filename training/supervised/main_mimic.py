@@ -11,7 +11,7 @@ from constraints import *
 from models import MLP
 import sys
 
-from mimic3 import MIMIC3
+from mimic3_treated import MIMIC3
 
 sys.path.append('../../')
 import time
@@ -115,7 +115,7 @@ def test(args, oracle, model, device, test_loader):
 
         output = model(x_batch)
         test_loss += loss(output, y_batch).item()  # sum up batch loss
-        pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
+        pred = torch.round(output.max(1, keepdim=True)[0]) # get the index of the max log-probability
             
         correct += pred.eq(y_batch.view_as(pred)).sum().item()
         constr += constr_acc.item()
@@ -172,7 +172,7 @@ test_loader = torch.utils.data.DataLoader(
     MIMIC3('../../data/datasets', train=False, download=True, transform=transform_test),
     batch_size=256, shuffle=True, **kwargs)
 
-model = MLP(76, 1, 1000, 3)  #.to(device)
+model = MLP(714, 1, 1000, 3)  #.to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
