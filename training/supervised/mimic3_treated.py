@@ -63,9 +63,17 @@ class MIMIC3(Dataset):
 
         # Check if we should use cached data
         if use_cached and cached_data_exists(folder):
-            self.data = get_cached_data(folder)
+            X, y = get_cached_data(folder)
         else:
-            self.data = self.prepare_data(folder, download)
+            X, y = self.prepare_data(folder, download)
+
+        # small fix - make sure the data always contains an even number of data points
+        if len(X) % 2 > 0:
+            X = X[:-1]
+            y = y[:-1]
+
+        self.data = (X, y)
+
 
 
     def prepare_data(self, folder: str, download: bool):
