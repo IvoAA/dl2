@@ -131,7 +131,7 @@ def test(args, oracle, model, device, test_loader):
 
 parser = argparse.ArgumentParser(description='Train NN with constraints.')
 parser = dl2.add_default_parser_args(parser)
-parser.add_argument('--batch-size', type=int, default=128, help='Number of samples in a batch.')
+parser.add_argument('--batch-size', type=int, default=64, help='Number of samples in a batch.')
 parser.add_argument('--num-iters', type=int, default=50, help='Number of oracle iterations.')
 parser.add_argument('--num-epochs', type=int, default=300, help='Number of epochs to train for.')
 parser.add_argument('--dl2-weight', type=float, default=0.0, help='Weight of DL2 loss.')
@@ -152,27 +152,12 @@ np.random.seed(42)
 device = torch.device("cuda" if use_cuda else "cpu")
 kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 
+mimic_train = MIMIC3(train=True)
+mimic_test = MIMIC3(train=False)
+train_loader = torch.utils.data.DataLoader(mimic_train, shuffle=True, batch_size=args.batch_size, **kwargs)
+test_loader  = torch.utils.data.DataLoader(mimic_test,  shuffle=True, batch_size=args.batch_size, **kwargs)
 
-transform = transforms.Compose([transforms.ToTensor()])
-
-transform_train = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-])  # meanstd transformation
-
-transform_test = transforms.Compose([
-    transforms.ToTensor(),
-])
-
-mimic_data = MIMIC3('../../data/datasets', train=True, download=True, transform=transform_train)
-
-train_loader = torch.utils.data.DataLoader(mimic_data, shuffle=True, batch_size=args.batch_size, **kwargs)
-test_loader = torch.utils.data.DataLoader(
-    MIMIC3('../../data/datasets', train=False, download=True, transform=transform_test),
-    batch_size=256, shuffle=True, **kwargs)
-
-model = MLP(714, 1, 1000, 3)  #.to(device)
+model = MLP(714, 1, 1000, 3).to(device)
 
 optimizer = optim.Adam(model.parameters(), lr=0.0001)
 

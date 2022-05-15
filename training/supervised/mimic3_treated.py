@@ -1,8 +1,9 @@
 import torch
 from torch.utils.data import Dataset
 import sys
+import os
 
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Tuple
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 
@@ -11,12 +12,10 @@ from torchvision.transforms import transforms
 
 PATH = 'Users/ivo00/Desktop/Ivo/DTU/Courses/Semester 2/Special Course'
 
-home_dir = f"C:/{PATH}/mimic3-benchmarks-master"
-sys.path.append(home_dir)
+mimic3_dir = f"C:/{PATH}/mimic3-benchmarks-master"
+sys.path.append(mimic3_dir)
 
 from mimic3benchmark.readers import InHospitalMortalityReader
-from mimic3models.preprocessing import Discretizer, Normalizer
-from mimic3models.in_hospital_mortality import utils
 from mimic3models import common_utils
 
 
@@ -28,20 +27,50 @@ def read_and_extract_features(reader):
     return X, ret['y'], ret['name']
 
 
+def get_cached_filename(input: bool, folder: str) -> str:
+    cached_dir = "datasets/cached"
+    if input:
+        filename = os.path.join(cached_dir, f"{folder}_X_cached.pt")
+    else:
+        filename = os.path.join(cached_dir, f"{folder}_y_cached.pt")
+    return filename
+
+        
+def cached_data_exists(folder: str) -> bool:
+    X_cached = get_cached_filename(True, folder)
+    y_cached = get_cached_filename(False, folder)
+    return os.path.exists(X_cached) and os.path.exists(y_cached)
+
+
+def get_cached_data(folder: str):
+    X_cached = get_cached_filename(True, folder)
+    y_cached = get_cached_filename(False, folder)
+    X = torch.load(X_cached)
+    y = torch.load(y_cached)
+    return (X, y)
+
+
 class MIMIC3(Dataset):
 
     def __init__(
             self,
-            root: str,
             train: bool = True,
-            transform: Optional[Callable] = None,
-            target_transform: Optional[Callable] = None,
-            download: bool = False,
+            download: bool = True,
+            use_cached: bool = True,
     ) -> None:
-        folder = 'train' if train else 'test'
         self.transform = transforms.Compose([transforms.ToTensor()])
-        reader = InHospitalMortalityReader(dataset_dir=home_dir + f"/mimic3/{folder}",
-                                                listfile=home_dir + f"/mimic3/{folder}/listfile.csv",
+        folder = 'train' if train else 'test'
+
+        # Check if we should use cached data
+        if use_cached and cached_data_exists(folder):
+            self.data = get_cached_data(folder)
+        else:
+            self.data = self.prepare_data(folder, download)
+
+
+    def prepare_data(self, folder: str, download: bool):
+        reader = InHospitalMortalityReader(dataset_dir=mimic3_dir + f"/data/in-hospital-mortality/{folder}",
+                                                listfile=mimic3_dir + f"/data/in-hospital-mortality/{folder}/listfile.csv",
                                                 period_length=48.0)
 
         (X, y, names) = read_and_extract_features(reader)
@@ -61,14 +90,25 @@ class MIMIC3(Dataset):
         X = torch.tensor(X).to(torch.float32)
         y = torch.tensor(y).to(torch.float32)
         y = torch.reshape(y, (len(y), 1))
+        
+        # Save the data
+        if download:
+            cached_dir = "datasets/cached"
+            if not os.path.exists(cached_dir):
+                os.makedirs(cached_dir)
+            X_cached = os.path.join(cached_dir, f'{folder}_X_cached.pt')
+            y_cached = os.path.join(cached_dir, f'{folder}_y_cached.pt')
+            torch.save(X, X_cached)
+            torch.save(y, y_cached)
 
-        self.data = (X, y)
+        return (X, y)
+
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         data = self.data[0][index]
         label = self.data[1][index]
         return data, label
 
+
     def __len__(self) -> int:
         return len(self.data[1])
-
