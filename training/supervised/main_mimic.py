@@ -7,12 +7,35 @@ import torch.optim as optim
 import json
 
 from models import MLP
+from oracles import DL2_Oracle
 from mimic3_treated import MIMIC3
 from mimic3models.metrics import print_metrics_binary
+from constraints import *
 
 import time
 
+
 use_cuda = torch.cuda.is_available()
+
+
+def oracle_train(args, x_batch, y_batch, oracle):
+    n_batch = int(x_batch.size()[0])
+    x_batches, y_batches = [], []
+    k = n_batch // oracle.constraint.n_tvars
+    assert n_batch % oracle.constraint.n_tvars == 0, 'Batch size must be divisible by number of train variables!'
+    
+    for i in range(oracle.constraint.n_tvars):
+        x_batches.append(x_batch[i:(i + k)])
+        y_batches.append(y_batch[i:(i + k)])
+
+    if oracle.constraint.n_gvars > 0:
+        domains = oracle.constraint.get_domains(x_batches, y_batches)
+        z_batches = oracle.general_attack(x_batches, y_batches, domains, num_restarts=1, num_iters=args.num_iters, args=args)
+        _, dl2_batch_loss, constr_acc = oracle.evaluate(x_batches, y_batches, z_batches, args)
+    else:
+        _, dl2_batch_loss, constr_acc = oracle.evaluate(x_batches, y_batches, None, args)
+
+    return (dl2_batch_loss, constr_acc)
 
 
 def train(args, net, oracle, device, train_loader, optimizer, epoch):
@@ -37,16 +60,16 @@ def train(args, net, oracle, device, train_loader, optimizer, epoch):
         net.eval()
         avg_ce_loss += ce_batch_loss.item()
 
-        if oracle is None:
-            net.train()
-            optimizer.zero_grad()
-            ce_batch_loss.backward()
-            optimizer.step()
-        else:
-            oracle_metrics = None
+        if oracle:
+            (dl2_batch_loss, constr_acc) = oracle_train(args, x_batch, y_batch, oracle)
+
+        net.train()
+        optimizer.zero_grad()
+        ce_batch_loss.backward()
+        optimizer.step()
 
         if batch_idx % args.print_freq == 0:
-            print('[%d] CE loss: %.3lf' % (batch_idx, ce_batch_loss.item()))
+            print('[%d] CE loss: %.3lf, dl2_batch_loss: %.3lf, constr_acc: %.3lf' % (batch_idx, ce_batch_loss.item(), dl2_batch_loss, constr_acc))
 
     
     print()
@@ -60,7 +83,6 @@ def train(args, net, oracle, device, train_loader, optimizer, epoch):
 
     return avg_ce_loss, metrics, t
 
-
 def test(args, model, oracle, device, test_loader):
     loss = torch.nn.BCEWithLogitsLoss(pos_weight==torch.tensor([args.pos_weight]))
     model.eval()
@@ -70,6 +92,9 @@ def test(args, model, oracle, device, test_loader):
     for data, target in test_loader:
         num_steps += 1
         x_batch, y_batch = data.to(device), target.to(device)
+
+        if oracle:
+            (dl2_batch_loss, constr_acc) = oracle_train(args, x_batch, y_batch, oracle)
 
         x_output = model(x_batch)
         avg_ce_loss += loss(x_output, y_batch).item()
@@ -87,21 +112,35 @@ def test(args, model, oracle, device, test_loader):
 
 
 parser = argparse.ArgumentParser(description='Train NN with constraints.')
+parser = dl2.add_default_parser_args(parser)
 parser.add_argument('--mode', type=str, default="train", help='mode: train or test')
 parser.add_argument('--batch-size', type=int, default=64, help='Number of samples in a batch.')
 parser.add_argument('--num-iters', type=int, default=50, help='Number of oracle iterations.')
 parser.add_argument('--num-epochs', type=int, default=300, help='Number of epochs to train for.')
 parser.add_argument('--l2', type=int, default=0.01, help='L2 regularizxation.')
-parser.add_argument('--pos-weight', type=int, default=5, help='Weight of positive examples.')
+parser.add_argument('--pos-weight', type=int, default=3, help='Weight of positive examples.')
 parser.add_argument('--grid-search', action=argparse.BooleanOptionalAction)
+parser.add_argument('--dl2-weight', type=float, default=0.0, help='Weight of DL2 loss.')
+parser.add_argument('--delay', type=int, default=0, help='How many epochs to wait before training with constraints.')
+parser.add_argument('--constraint', type=str, required=True, help='the constraint to train with: LipschitzT(L), LipschitzG(eps, L), RobustnessT(eps1, eps2), RobustnessG(eps, delta), CSimiliarityT(), CSimilarityG(), LineSegmentG()')
 parser.add_argument('--print-freq', type=int, default=10, help='Print frequency.')
 parser.add_argument('--report-dir', type=str, required=True, help='Directory where results should be stored')
+parser.add_argument('--network-output', type=str, choices=['logits', 'prob', 'logprob'], default='logits', help='Wether to treat the output of the network as logits, probabilities or log(probabilities) in the constraints.')
 args = parser.parse_args()
 
 torch.manual_seed(42)
 np.random.seed(42)
 device = torch.device("cuda" if use_cuda else "cpu")
 kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
+
+model = MLP(714, 1, 1000, 3).to(device)
+       
+def Mimic3(eps1, eps2):
+    return lambda model, use_cuda, network_output: Mimic3DatasetConstraint(model, eps1, eps2, use_cuda=use_cuda, network_output=network_output)
+
+constraint = eval(args.constraint)(model, use_cuda, network_output=args.network_output)
+oracle = DL2_Oracle(learning_rate=0.01, net=model, constraint=constraint, use_cuda=use_cuda)
+
 
 
 if args.mode == 'train':
@@ -141,19 +180,18 @@ if args.mode == 'train':
             'aucprc': [],
         }
 
-        model = MLP(714, 1, 1000, 3).to(device)
         optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=l2)
 
         for epoch in range(1, args.num_epochs + 1):
             train_avg_loss, train_metrics, epoch_time = \
-                train(args, model, None, device, train_loader, optimizer, epoch)
+                train(args, model, oracle, device, train_loader, optimizer, epoch)
             data_dict['train_avg_loss'].append(train_avg_loss)
             data_dict['train_acc'].append(train_metrics['acc'].item())
             data_dict['train_aucroc'].append(train_metrics['auroc'].item())
             data_dict['train_aucprc'].append(train_metrics['auprc'].item())
             data_dict['epoch_time'].append(epoch_time)
 
-            avg_loss, metrics = test(args, model, None, device, val_loader)
+            avg_loss, metrics = test(args, model, oracle, device, val_loader)
             data_dict['avg_loss'].append(avg_loss)
             data_dict['acc'].append(metrics['acc'].item())
             data_dict['aucroc'].append(metrics['auroc'].item())

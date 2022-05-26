@@ -340,13 +340,18 @@ class Mimic3DatasetConstraint(Constraint):
         # 3 time buckets before = 18 (3 * 6)
         # 546 + 18 -> 564 is the index of the 1st function of the 4th time bucket of the 14th parameter
         index_systolic_blood_pressure = 564
-        min_normalized_systolic_blood_pressure = x_batches[0][:, index_systolic_blood_pressure] | x_batches[1][:, index_systolic_blood_pressure]
+        min_normalized_systolic_blood_pressure1 = x_batches[0][:, index_systolic_blood_pressure] 
+        min_normalized_systolic_blood_pressure2 = x_batches[1][:, index_systolic_blood_pressure]
 
         normalized_systolic_blood_pressure_180 = 4.61654
 
-        rule_normalized_systolic_blood_pressure = dl2.Implication(dl2.LEQ(min_normalized_systolic_blood_pressure, normalized_systolic_blood_pressure_180),
-                       dl2.GEQ(x_out1[:], 0.2))
+        rule_normalized_systolic_blood_pressure1 = dl2.Implication(dl2.LEQ(min_normalized_systolic_blood_pressure1, normalized_systolic_blood_pressure_180),
+                        dl2.GEQ(x_out1[:], 0.2))
 
-        rules.append(rule_normalized_systolic_blood_pressure)
+        rule_normalized_systolic_blood_pressure2 = dl2.Implication(dl2.LEQ(min_normalized_systolic_blood_pressure2, normalized_systolic_blood_pressure_180),
+                        dl2.GEQ(x_out2[:], 0.2))
+
+        rules.append(rule_normalized_systolic_blood_pressure1)
+        rules.append(rule_normalized_systolic_blood_pressure2)
 
         return dl2.And(rules)
