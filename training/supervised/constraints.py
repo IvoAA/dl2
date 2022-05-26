@@ -310,7 +310,6 @@ class Mimic3DatasetConstraint(Constraint):
     def __init__(self, net, eps1, eps2, use_cuda=True, network_output='logits'):
         self.net = net
         self.network_output = network_output
-        print("Ignoring network_output argument, using prob and logprob to obtain KL divergence")
         self.eps1 = eps1
         self.eps2 = eps2
         self.use_cuda = use_cuda
@@ -327,6 +326,10 @@ class Mimic3DatasetConstraint(Constraint):
         # need to understand how to use the whole batch and compare it properly
 
         x_out1, x_out2 = self.net(x_batches[0]), self.net(x_batches[1])
+
+        # Convert to probabilities
+        x_out1 = torch.sigmoid(x_out1)
+        x_out2 = torch.sigmoid(x_out2)
 
         rules = []
 
@@ -345,10 +348,10 @@ class Mimic3DatasetConstraint(Constraint):
 
         normalized_systolic_blood_pressure_180 = 4.61654
 
-        rule_normalized_systolic_blood_pressure1 = dl2.Implication(dl2.LEQ(min_normalized_systolic_blood_pressure1, normalized_systolic_blood_pressure_180),
+        rule_normalized_systolic_blood_pressure1 = dl2.Implication(dl2.GEQ(min_normalized_systolic_blood_pressure1, normalized_systolic_blood_pressure_180),
                         dl2.GEQ(x_out1[:], 0.2))
 
-        rule_normalized_systolic_blood_pressure2 = dl2.Implication(dl2.LEQ(min_normalized_systolic_blood_pressure2, normalized_systolic_blood_pressure_180),
+        rule_normalized_systolic_blood_pressure2 = dl2.Implication(dl2.GEQ(min_normalized_systolic_blood_pressure2, normalized_systolic_blood_pressure_180),
                         dl2.GEQ(x_out2[:], 0.2))
 
         rules.append(rule_normalized_systolic_blood_pressure1)

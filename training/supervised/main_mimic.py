@@ -62,11 +62,16 @@ def train(args, net, oracle, device, train_loader, optimizer, epoch):
 
         if oracle:
             (dl2_batch_loss, constr_acc) = oracle_train(args, x_batch, y_batch, oracle)
-
-        net.train()
-        optimizer.zero_grad()
-        ce_batch_loss.backward()
-        optimizer.step()
+            net.train()
+            optimizer.zero_grad()
+            tot_batch_loss = args.dl2_weight * dl2_batch_loss + ce_batch_loss
+            tot_batch_loss.backward()
+            optimizer.step()
+        else:
+            net.train()
+            optimizer.zero_grad()
+            ce_batch_loss.backward()
+            optimizer.step()
 
         if batch_idx % args.print_freq == 0:
             print('[%d] CE loss: %.3lf, dl2_batch_loss: %.3lf, constr_acc: %.3lf' % (batch_idx, ce_batch_loss.item(), dl2_batch_loss, constr_acc))
