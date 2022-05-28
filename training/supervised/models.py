@@ -8,8 +8,6 @@ class MLP(nn.Module):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc_h = [nn.Linear(hidden_size, hidden_size) for _ in range(n_hidden)]
-        for fc in self.fc_h:
-            fc.cuda()
         self.fc2 = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
