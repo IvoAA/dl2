@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from domains import *
+from .domains import *
 import sys
 import pathlib
 
